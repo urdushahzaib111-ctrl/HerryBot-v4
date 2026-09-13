@@ -14,7 +14,7 @@ module.exports = {
             const result = await getOrCreateUserKey(userId);
 
             if (!result.isNew) {
-                // User Already Has An Active Key
+                // Active Key Pehle Se Maujood Hai
                 const embed = new EmbedBuilder()
                     .setColor('#FF9900')
                     .setTitle('⚠️ Active Key Already Exists!')
@@ -30,12 +30,12 @@ module.exports = {
 
                 return interaction.editReply({ embeds: [embed] });
             } else {
-                // New Key Generated & Synced to GitHub
+                // Nayi Key Ban Gayi Aur GitHub Repo (Herry-Script) Me Sync Ho Gayi
                 const embed = new EmbedBuilder()
                     .setColor('#00FF00')
                     .setTitle('✅ New Access Key Generated!')
                     .setDescription(
-                        `**ENGLISH:**\nYour 3-day access key has been created and synced with the GitHub database!\n\n` +
+                        `**ENGLISH:**\nYour 3-day access key has been created and synced with the GitHub repository!\n\n` +
                         `**ROMAN URDU:**\nAapki 3-day key ban gayi hai aur GitHub server par update ho gayi hai.\n\n` +
                         `🔑 **Your Access Key:**\n\`\`\`${result.key}\`\`\``
                     )
@@ -49,7 +49,7 @@ module.exports = {
         } catch (error) {
             console.error("Getkey Command Error:", error);
             return interaction.editReply({
-                content: "❌ **Error:** Unable to process key generation right now. Please try again later."
+                content: "❌ **Error:** Unable to process key generation right now. ."
             });
         }
     }
