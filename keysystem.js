@@ -5,6 +5,7 @@ const GITHUB_OWNER = "urdushahzaib111-ctrl";
 const GITHUB_REPO = "HerryBot-v4";
 const GITHUB_PATH = "keys.txt";
 
+// Helper function to get raw content and SHA from GitHub API
 async function getGitHubKeys() {
     if (!GITHUB_TOKEN) return { sha: null, content: "" };
     try {
@@ -21,54 +22,101 @@ async function getGitHubKeys() {
     }
 }
 
+// Helper function to update GitHub keys.txt file
+async function updateGitHubKeys(sha, contentString, commitMessage) {
+    if (!GITHUB_TOKEN) return false;
+    try {
+        const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
+        const headers = {
+            'Authorization': `token ${GITHUB_TOKEN}`,
+            'Accept': 'application/vnd.github.v3+json'
+        };
+        const base64Content = Buffer.from(contentString).toString('base64');
+
+        await axios.put(url, {
+            message: commitMessage || "Auto Sync Keys",
+            content: base64Content,
+            sha: sha
+        }, { headers });
+
+        return true;
+    } catch (e) {
+        console.error("GitHub Sync Error:", e.response ? e.response.data : e.message);
+        return false;
+    }
+}
+
 async function getOrCreateUserKey(userId) {
-    const { sha, content } = await getGitHubKeys();
-    const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const now = Date.now();
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000; // 3 Days in Milliseconds
 
-    // Agar user ki key pehle se bani hui hai toh wahi do (Hum user tracking ke liye format check kar sakte hain ya simple persistent mapping rakh sakte hain)
-    // Lekin sabse asan tareeqa yeh hai ke hum check karein agar user pehle command chala chuka hai
-    // Chunki hum GitHub par sirf keys rakh rahe hain, hum user ko ek consistent key assign karenge uski ID ke hash/math se ya fir check karenge.
-    
-    // Behtareen hal: User ID ke base par ek fixed key generate ho jo kabhi change na ho!
-    // Isse GitHub par baar baar nayi lines add hone ka ya mismatch ka masla hi khatam ho jayega.
-    
-    let userKey = "";
-    // User ID ke numbers se ek unique key banayein jo hamesha ussi user ke liye same rahegi
-    let numericId = parseInt(userId.replace(/\D/g, '')) || 12345;
-    let generatedKeyNum = (numericId % 90000) + 10000;
-    userKey = `Herry${generatedKeyNum}`;
+    let { sha, content } = await getGitHubKeys();
+    let lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-    // Ab check karein kya yeh key already GitHub ki `keys.txt` mein hai ya nahi
-    if (!lines.includes(userKey)) {
-        lines.push(userKey);
-        if (sha) {
-            try {
-                const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
-                const headers = {
-                    'Authorization': `token ${GITHUB_TOKEN}`,
-                    'Accept': 'application/vnd.github.v3+json'
-                };
+    let activeRecords = [];
+    let isFileModified = false;
+    let existingUserRecord = null;
 
-                const updatedContent = lines.join('\n') + '\n';
-                const base64Content = Buffer.from(updatedContent).toString('base64');
+    // Process line-by-line & filter out expired keys
+    for (let line of lines) {
+        let parts = line.split('|');
+        if (parts.length >= 2) {
+            let key = parts[0].trim();
+            let expiresAt = parseInt(parts[1].trim());
+            let uid = parts[2] ? parts[2].trim() : null;
 
-                await axios.put(url, {
-                    message: `Auto Sync Key for User`,
-                    content: base64Content,
-                    sha: sha
-                }, { headers });
-            } catch (e) {
-                console.error("GitHub Error:", e.message);
+            // Check if key is still valid (Not expired)
+            if (expiresAt > now) {
+                activeRecords.push({ key, expiresAt, userId: uid });
+                if (uid === userId) {
+                    existingUserRecord = { key, expiresAt };
+                }
+            } else {
+                // Key expired ho gayi hai, automatic drop ho jayegi
+                isFileModified = true;
             }
+        } else if (line.length > 0) {
+            // Old simple text key handling fallback
+            activeRecords.push({ key: line.trim(), expiresAt: now + THREE_DAYS_MS, userId: null });
         }
     }
 
+    let finalKey = "";
+    let finalExpiry = 0;
+    let isNew = false;
+
+    // Agar user ki already active key majood hai to wohi show karo
+    if (existingUserRecord) {
+        finalKey = existingUserRecord.key;
+        finalExpiry = existingUserRecord.expiresAt;
+        isNew = false;
+    } else {
+        // Nayi 3-day key generate karo
+        let randomNum = Math.floor(10000 + Math.random() * 90000);
+        finalKey = `Herry${randomNum}`;
+        finalExpiry = now + THREE_DAYS_MS;
+        isNew = true;
+
+        activeRecords.push({ key: finalKey, expiresAt: finalExpiry, userId: userId });
+        isFileModified = true;
+    }
+
+    // Agar key list update hui hai ya expired keys auto-remove hui hain, GitHub push karo
+    if (isFileModified && sha) {
+        let updatedLines = activeRecords.map(r => `${r.key}|${r.expiresAt}|${r.userId || ''}`);
+        let newContentString = updatedLines.join('\n') + '\n';
+        await updateGitHubKeys(sha, newContentString, `Update Keys (Auto Clean & Sync for User: ${userId})`);
+    }
+
+    // Remaining hours calculate karein display k liye
+    let hoursLeftCalculated = Math.round((finalExpiry - now) / (1000 * 60 * 60));
+
     return {
-        isNew: false,
-        key: userKey,
-        hoursLeft: "Active"
+        isNew: isNew,
+        key: finalKey,
+        hoursLeft: `${hoursLeftCalculated} Hours`,
+        expiresAt: finalExpiry
     };
 }
 
 module.exports = { getOrCreateUserKey };
-
