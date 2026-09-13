@@ -1,7 +1,7 @@
 const axios = require('axios');
 
-// Process environment variable set to GITHUB_TOKEN2 for the new GitHub account
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN2;
+// Automatically checks GITHUB_TOKEN2 or GITHUB_TOKEN
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN2 || process.env.GITHUB_TOKEN;
 
 // GitHub Repository Configuration
 const GITHUB_OWNER = "azadamirazad99-ur";
@@ -11,7 +11,7 @@ const GITHUB_PATH = "keys.txt";
 // Helper function to fetch raw content and SHA from GitHub API
 async function getGitHubKeys() {
     if (!GITHUB_TOKEN) {
-        console.error("❌ GitHub Error: GITHUB_TOKEN2 process variable is missing!");
+        console.error("❌ GitHub Error: Neither GITHUB_TOKEN nor GITHUB_TOKEN2 is set in environment variables!");
         return { sha: null, content: "" };
     }
     try {
@@ -40,7 +40,7 @@ async function updateGitHubKeys(sha, contentString, commitMessage) {
         };
         const base64Content = Buffer.from(contentString).toString('base64');
 
-        await axios.put(url, {
+        const response = await axios.put(url, {
             message: commitMessage || "Auto Sync Keys",
             content: base64Content,
             sha: sha
@@ -58,6 +58,11 @@ async function getOrCreateUserKey(userId) {
     const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000; // 3 Days in Milliseconds
 
     let { sha, content } = await getGitHubKeys();
+
+    if (!sha && !content) {
+        throw new Error("Unable to fetch or connect to GitHub repository.");
+    }
+
     let lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
     let activeRecords = [];
@@ -79,7 +84,7 @@ async function getOrCreateUserKey(userId) {
                     existingUserRecord = { key, expiresAt };
                 }
             } else {
-                // Key Expired - Auto Delete from array
+                // Key Expired - Auto Delete
                 isFileModified = true;
             }
         } else if (line.length > 0) {
@@ -112,7 +117,10 @@ async function getOrCreateUserKey(userId) {
     if (isFileModified && sha) {
         let updatedLines = activeRecords.map(r => `${r.key}|${r.expiresAt}|${r.userId || ''}`);
         let newContentString = updatedLines.join('\n') + '\n';
-        await updateGitHubKeys(sha, newContentString, `Auto Sync Key for Discord User: ${userId}`);
+        const pushed = await updateGitHubKeys(sha, newContentString, `Auto Sync Key for Discord User: ${userId}`);
+        if (!pushed) {
+            throw new Error("Failed to push key update to GitHub.");
+        }
     }
 
     let hoursLeftCalculated = Math.round((finalExpiry - now) / (1000 * 60 * 60));
