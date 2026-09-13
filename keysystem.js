@@ -1,11 +1,12 @@
 const axios = require('axios');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_OWNER = "urdushahzaib111-ctrl";
-const GITHUB_REPO = "HerryBot-v4";
+// AAPKI NEW REPO CONFIGURATION
+const GITHUB_OWNER = "azadamirazad99-ur";
+const GITHUB_REPO = "Herry-Script";
 const GITHUB_PATH = "keys.txt";
 
-// Helper function to get raw content and SHA from GitHub API
+// Helper function to fetch raw content and SHA from GitHub API
 async function getGitHubKeys() {
     if (!GITHUB_TOKEN) return { sha: null, content: "" };
     try {
@@ -18,6 +19,7 @@ async function getGitHubKeys() {
         const content = Buffer.from(res.data.content, 'base64').toString('utf8');
         return { sha: res.data.sha, content: content };
     } catch (e) {
+        console.error("GitHub Fetch Error:", e.response ? e.response.data : e.message);
         return { sha: null, content: "" };
     }
 }
@@ -41,7 +43,7 @@ async function updateGitHubKeys(sha, contentString, commitMessage) {
 
         return true;
     } catch (e) {
-        console.error("GitHub Sync Error:", e.response ? e.response.data : e.message);
+        console.error("GitHub Push Error:", e.response ? e.response.data : e.message);
         return false;
     }
 }
@@ -57,7 +59,7 @@ async function getOrCreateUserKey(userId) {
     let isFileModified = false;
     let existingUserRecord = null;
 
-    // Process line-by-line & filter out expired keys
+    // Line by line scan and remove expired keys
     for (let line of lines) {
         let parts = line.split('|');
         if (parts.length >= 2) {
@@ -65,18 +67,18 @@ async function getOrCreateUserKey(userId) {
             let expiresAt = parseInt(parts[1].trim());
             let uid = parts[2] ? parts[2].trim() : null;
 
-            // Check if key is still valid (Not expired)
+            // Check if key is active
             if (expiresAt > now) {
                 activeRecords.push({ key, expiresAt, userId: uid });
                 if (uid === userId) {
                     existingUserRecord = { key, expiresAt };
                 }
             } else {
-                // Key expired ho gayi hai, automatic drop ho jayegi
+                // Key Expired - Auto Delete from array
                 isFileModified = true;
             }
         } else if (line.length > 0) {
-            // Old simple text key handling fallback
+            // Old format handling
             activeRecords.push({ key: line.trim(), expiresAt: now + THREE_DAYS_MS, userId: null });
         }
     }
@@ -85,13 +87,13 @@ async function getOrCreateUserKey(userId) {
     let finalExpiry = 0;
     let isNew = false;
 
-    // Agar user ki already active key majood hai to wohi show karo
+    // If user already has an active key
     if (existingUserRecord) {
         finalKey = existingUserRecord.key;
         finalExpiry = existingUserRecord.expiresAt;
         isNew = false;
     } else {
-        // Nayi 3-day key generate karo
+        // Generate new key
         let randomNum = Math.floor(10000 + Math.random() * 90000);
         finalKey = `Herry${randomNum}`;
         finalExpiry = now + THREE_DAYS_MS;
@@ -101,14 +103,13 @@ async function getOrCreateUserKey(userId) {
         isFileModified = true;
     }
 
-    // Agar key list update hui hai ya expired keys auto-remove hui hain, GitHub push karo
+    // Save/Push to GitHub if expired keys were deleted or new key was added
     if (isFileModified && sha) {
         let updatedLines = activeRecords.map(r => `${r.key}|${r.expiresAt}|${r.userId || ''}`);
         let newContentString = updatedLines.join('\n') + '\n';
-        await updateGitHubKeys(sha, newContentString, `Update Keys (Auto Clean & Sync for User: ${userId})`);
+        await updateGitHubKeys(sha, newContentString, `Auto Sync Key for Discord User: ${userId}`);
     }
 
-    // Remaining hours calculate karein display k liye
     let hoursLeftCalculated = Math.round((finalExpiry - now) / (1000 * 60 * 60));
 
     return {
