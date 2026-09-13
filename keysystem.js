@@ -1,14 +1,19 @@
 const axios = require('axios');
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-// AAPKI NEW REPO CONFIGURATION
+// Process environment variable set to GITHUB_TOKEN2 for the new GitHub account
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN2;
+
+// GitHub Repository Configuration
 const GITHUB_OWNER = "azadamirazad99-ur";
 const GITHUB_REPO = "Herry-Script";
 const GITHUB_PATH = "keys.txt";
 
 // Helper function to fetch raw content and SHA from GitHub API
 async function getGitHubKeys() {
-    if (!GITHUB_TOKEN) return { sha: null, content: "" };
+    if (!GITHUB_TOKEN) {
+        console.error("❌ GitHub Error: GITHUB_TOKEN2 process variable is missing!");
+        return { sha: null, content: "" };
+    }
     try {
         const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
         const headers = {
@@ -78,7 +83,7 @@ async function getOrCreateUserKey(userId) {
                 isFileModified = true;
             }
         } else if (line.length > 0) {
-            // Old format handling
+            // Old format fallback handling
             activeRecords.push({ key: line.trim(), expiresAt: now + THREE_DAYS_MS, userId: null });
         }
     }
@@ -93,7 +98,7 @@ async function getOrCreateUserKey(userId) {
         finalExpiry = existingUserRecord.expiresAt;
         isNew = false;
     } else {
-        // Generate new key
+        // Generate new 3-day key
         let randomNum = Math.floor(10000 + Math.random() * 90000);
         finalKey = `Herry${randomNum}`;
         finalExpiry = now + THREE_DAYS_MS;
